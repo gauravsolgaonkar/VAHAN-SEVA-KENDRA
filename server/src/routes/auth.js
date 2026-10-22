@@ -5,6 +5,7 @@ import { requireAuth, signToken } from '../middleware/auth.js';
 import { asyncH, HttpError } from '../middleware/errors.js';
 import Tenant from '../models/Tenant.js';
 import User from '../models/User.js';
+import CreditTxn from '../models/CreditTxn.js';
 
 const r = Router();
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false });
@@ -26,6 +27,7 @@ r.post('/register', limiter, asyncH(async (req, res) => {
   const user = await User.create({
     tenantId: tenant._id, name, mobile: m, passwordHash: await bcrypt.hash(password, 10), role: 'owner', canViewAll: true, language,
   });
+  await CreditTxn.create({ tenantId: tenant._id, userId: user._id, type: 'trial', credits: tenant.rcCredits, balanceAfter: tenant.rcCredits, note: 'Free trial credits' });
   res.status(201).json({ token: signToken(user), user: user.toPublic(), tenant });
 }));
 

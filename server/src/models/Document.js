@@ -29,14 +29,38 @@ const documentSchema = new mongoose.Schema(
       odPremium: Number,
       tpPremium: Number,
     },
+    // Commission earned on policies booked through us.
+    commission: {
+      type: { type: String, enum: ['pct_od', 'pct_tp', 'pct_total', 'flat', null], default: null },
+      rate: Number, // % for pct_*, ₹ for flat
+      amount: Number,
+      platform: String, // Turtlemint, PB Partner, direct insurer, ...
+      payoutReceived: { type: Boolean, default: false },
+      payoutDate: Date,
+    },
+    bookedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    bookedAt: Date,
+    paymentMode: { type: String, enum: ['cash', 'upi', 'card', 'other', null], default: null },
     files: [{ path: String, name: String, mime: String, size: Number, uploadedAt: Date }],
     status: { type: String, enum: ['active', 'archived'], default: 'active' },
-    source: { type: String, enum: ['manual', 'rc_fetch', 'import'], default: 'manual' },
+    source: { type: String, enum: ['manual', 'rc_fetch', 'import', 'renewal', 'puc_entry'], default: 'manual' },
     notes: String,
   },
   { timestamps: true },
 );
 
 documentSchema.index({ tenantId: 1, status: 1, expiryDate: 1 });
+documentSchema.index({ tenantId: 1, bookedAt: -1 });
+
+export const COMMISSION_TYPES = ['pct_od', 'pct_tp', 'pct_total', 'flat'];
+
+/** Commission in ₹ from the policy's premiums. */
+export function computeCommission(c = {}, ins = {}) {
+  const rate = Number(c.rate) || 0;
+  if (!c.type || !rate) return null;
+  if (c.type === 'flat') return Math.round(rate);
+  const base = { pct_od: ins.odPremium, pct_tp: ins.tpPremium, pct_total: ins.totalPremium }[c.type];
+  return base ? Math.round((Number(base) * rate) / 100) : null;
+}
 
 export default mongoose.model('Document', documentSchema);

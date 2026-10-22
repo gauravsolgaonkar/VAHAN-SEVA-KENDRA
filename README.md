@@ -31,8 +31,32 @@ registration number, document expiry tracking and WhatsApp renewal reminders. UI
   `{name} {vehicle} {doc} {expiry} {agent_name} {agent_phone}`.
 - Global search, dark mode, offline viewing of last-loaded data (service worker).
 
-Not in Phase 1: credit wallet/Razorpay, bulk fetch, renewal check, pipeline, commission, reports, import/export
-(Phase 2); WhatsApp Cloud API, OCR, subscriptions, super-admin (Phase 3).
+## Phase 2
+
+- **RC credit wallet**: every live RC fetch takes 1 credit (cache hits are free, failed fetches are refunded).
+  Ledger in `CreditTxn`. Owner buys packs with Razorpay Checkout (order -> HMAC verify, plus a
+  `/api/wallet/webhook` for `payment.captured` / `order.paid`). Price per credit and packs live in
+  `PlatformSettings` (super-admin UI comes in Phase 3). Low-balance banner on the dashboard.
+- **Bulk fetch** (`/bulk`): paste or upload (.txt/.csv/.xlsx) up to 500 reg nos., see valid / invalid / duplicate /
+  free-from-cache / credits needed first, then a background queue with a progress bar and stop button. Jobs
+  resume after a restart. Vehicles go to a customer named after the RC owner, or to one fleet customer.
+- **Renewal pipeline**: a case opens for every document entering the reminder window:
+  Pending -> Contacted -> Quote sent -> Renewed / Lost (price, renewed elsewhere, vehicle sold, other), with
+  follow-up date, quote, call notes and history. "Renewed" captures the new policy, creates next year's document
+  and archives the old one. Marking a reminder sent moves the case to Contacted.
+- **Renewal check** (per-tenant switch): the 8 AM job re-fetches insurance 3-5 days before and 1-3 days after
+  expiry. A later expiry with a different policy no. marks the case Lost / renewed elsewhere; a policy we booked
+  marks it Renewed.
+- **Commission** on insurance/health/life booked through us: % of OD, % of TP, % of total or flat; platform and
+  payout received.
+- **Reports**: premium, commission and pending payouts by month / agent / insurer / vehicle type / platform;
+  expiring today / this week / this month; Excel export of each.
+- **Import / export**: Excel or CSV import with automatic column matching (English/Hindi/Marathi headers),
+  editable mapping, optional RC fetch for imported vehicles; full data export to Excel.
+- **PUC centre mode**: counter screen (`/puc`) for a walk-in in a few taps (reg no. -> fetch -> amount from the
+  rate card -> cash/UPI -> save), daily count and cash on the dashboard, rate card in Settings.
+
+Not yet: WhatsApp Cloud API, OCR, second RC provider fallback UI, subscriptions, super-admin (Phase 3).
 
 ## Run locally
 
@@ -60,6 +84,9 @@ Until a real key is added, `RC_PROVIDERS=mock` returns Surepass-shaped `rc-full`
 (Bolero pickup), `MH14JK7890` (blacklisted truck). Any other valid number gets generated data.
 Test numbers: `MH01ZZ0001` not found, `MH01ZZ0002` timeout, `MH01ZZ0003` provider error.
 
+Renewal-check demo numbers: `MH20RE####` shows insurance due in 4 days on the first fetch and a different
+insurer one year later on the next (renewed elsewhere); `MH20RU####` comes back with a new policy no.
+
 To switch to Surepass: set `SUREPASS_TOKEN` and `RC_PROVIDERS=surepass` (or `surepass,cashfree` for fallback).
 
 ## Deploy
@@ -67,4 +94,7 @@ To switch to Surepass: set `SUREPASS_TOKEN` and `RC_PROVIDERS=surepass` (or `sur
 - **API on Render**: `render.yaml` blueprint. Set `MONGODB_URI` (Atlas), `CORS_ORIGINS` (the Vercel URL).
   Uploaded files are stored on local disk for now; Render's disk is ephemeral, so move uploads to S3/Cloudinary
   before real use.
+  For payments set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET` (webhook URL:
+  `https://<api>/api/wallet/webhook`). Without keys, `PAYMENTS_MOCK=1` turns on a test checkout that adds credits
+  without taking money; leave it unset in production.
 - **App on Vercel**: root directory `client`, set `VITE_API_URL` to the Render URL.

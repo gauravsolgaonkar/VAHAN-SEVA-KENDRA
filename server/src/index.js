@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { createApp } from './app.js';
 import { config } from './config.js';
+import { resumeBulkJobs } from './jobs/bulk.js';
 import { buildAllQueues, startReminderCron } from './jobs/reminders.js';
 import User from './models/User.js';
 import { activeProviders } from './rc/index.js';
@@ -19,5 +20,6 @@ app.listen(config.port, () => {
 });
 
 startReminderCron();
+resumeBulkJobs().catch((e) => console.error('[bulk] resume failed', e));
 // Catch up on boot in case the server was asleep at 8 AM (Render free tier sleeps).
 buildAllQueues().catch((e) => console.error('[reminders] boot run failed', e));

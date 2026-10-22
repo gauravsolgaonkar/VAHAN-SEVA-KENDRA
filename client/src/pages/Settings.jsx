@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import Icon from '../components/Icon.jsx';
@@ -123,6 +124,87 @@ function Team() {
   );
 }
 
+const PUC_RATE_KEYS = ['2W', 'car', 'auto', 'pickup', 'default'];
+
+function Business() {
+  const { t } = useI18n();
+  const { tenant, setTenant } = useAuth();
+  const [run, setRun] = useState(null);
+  const [running, setRunning] = useState(false);
+  const [err, setErr] = useState(null);
+  const [, setToast, toast] = useToast();
+  const st = tenant?.settings || {};
+  const [rates, setRates] = useState(() => Object.fromEntries(PUC_RATE_KEYS.map((k) => [k, String(st.pucRates?.[k] ?? '')])));
+  const [threshold, setThreshold] = useState(String(st.lowCreditThreshold ?? 10));
+
+  const patch = async (body) => {
+    setErr(null);
+    try {
+      setTenant(await api('/tenant', { method: 'PATCH', body }));
+      setToast(t('saved'));
+    } catch (ex) {
+      setErr(ex);
+    }
+  };
+  const runNow = async () => {
+    setRunning(true);
+    setErr(null);
+    try {
+      setRun(await api('/pipeline/renewal-check/run', { method: 'POST' }));
+      api('/wallet').then((w) => setTenant({ ...tenant, rcCredits: w.balance })).catch(() => {});
+    } catch (ex) {
+      setErr(ex);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <details className="card" open>
+      <summary>{t('business')}</summary>
+      <div className="stack" style={{ marginTop: 10 }}>
+        <Field label={t('businessMode')}>
+          <div className="seg">
+            {['agent', 'puc_centre'].map((m) => <button type="button" key={m} className={tenant?.mode === m ? 'on' : ''} onClick={() => patch({ mode: m })}>{t(`mode_${m}`)}</button>)}
+          </div>
+        </Field>
+        <Link to="/wallet" className="row card" style={{ boxShadow: 'none', background: 'var(--bg)' }}>
+          <Icon name="wallet" /><span className="spacer bold">{t('wallet')}</span><span className="bold">{tenant?.rcCredits}</span><Icon name="chevron" />
+        </Link>
+        <div className="grid2" style={{ alignItems: 'end' }}>
+          <Field label={t('lowCreditAlertAt')}>
+            <input className="input" inputMode="numeric" value={threshold} onChange={(e) => setThreshold(e.target.value.replace(/\D/g, ''))} />
+          </Field>
+          <button type="button" className="btn" onClick={() => patch({ settings: { lowCreditThreshold: Number(threshold) || 0 } })}>{t('save')}</button>
+        </div>
+        <label className="row" style={{ justifyContent: 'space-between', minHeight: 48 }}>
+          <span className="bold">{t('renewalCheckSetting')}</span>
+          <input type="checkbox" style={{ width: 26, height: 26, accentColor: 'var(--orange)' }} checked={Boolean(st.renewalCheck)}
+            onChange={(e) => patch({ settings: { renewalCheck: e.target.checked } })} />
+        </label>
+        <div className="hint">{t('renewalCheckHelp')}</div>
+        {st.renewalCheck && (
+          <button type="button" className="btn block" disabled={running} onClick={runNow}>
+            {running ? <span className="spinner dark" /> : <><Icon name="refresh" /> {t('runNow')}</>}
+          </button>
+        )}
+        {run && <div className="banner ok small">{t('checkedN', { n: run.checked, e: run.renewedElsewhere, u: run.renewedUs })}{run.stoppedNoCredits ? ` · ${t('noCredits')}` : ''}</div>}
+        <div className="small bold">{t('pucRates')}</div>
+        <div className="grid3">
+          {PUC_RATE_KEYS.map((k) => (
+            <Field key={k} label={k === 'default' ? t('vt_other') : t(`vt_${k}`)}>
+              <input className="input" inputMode="numeric" value={rates[k]} onChange={(e) => setRates({ ...rates, [k]: e.target.value.replace(/\D/g, '') })} />
+            </Field>
+          ))}
+        </div>
+        <button type="button" className="btn block" onClick={() => patch({ settings: { pucRates: Object.fromEntries(Object.entries(rates).filter(([, v]) => v !== '').map(([k, v]) => [k, Number(v)])) } })}>{t('save')}</button>
+        {err && <div className="banner err">{errorText(t, err)}</div>}
+      </div>
+      {toast}
+    </details>
+  );
+}
+
 export default function Settings() {
   const { t, lang, setLang } = useI18n();
   const { user, tenant, isOwner, logout } = useAuth();
@@ -152,6 +234,7 @@ export default function Settings() {
           />
         </label>
       </div>
+      {isOwner && <Business />}
       <Templates />
       {isOwner && <Team />}
       <button type="button" className="btn danger block" onClick={logout}>{t('logout')}</button>

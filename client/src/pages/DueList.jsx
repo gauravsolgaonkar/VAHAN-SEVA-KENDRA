@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import Icon from '../components/Icon.jsx';
@@ -7,6 +7,7 @@ import { ErrorBox, ExpiryPill, Loading, Plate, useToast } from '../components/ui
 import { useApi } from '../hooks.js';
 import { useI18n } from '../i18n.jsx';
 import { telLink } from '../util.js';
+import { CaseChip, PipelineList } from './Pipeline.jsx';
 
 function ReminderCard({ r, onDone, showMessage, canWrite }) {
   const { t } = useI18n();
@@ -33,7 +34,10 @@ function ReminderCard({ r, onDone, showMessage, canWrite }) {
             <span className="small bold">{t(`doc_${r.document.type}`)}</span>
           </div>
         </Link>
-        <ExpiryPill date={r.document.expiryDate} />
+        <div className="stack" style={{ gap: 4, alignItems: 'flex-end' }}>
+          <ExpiryPill date={r.document.expiryDate} />
+          {r.case && <CaseChip status={r.case.status} id={r.case._id} />}
+        </div>
       </div>
       {showMessage && <div className="msg-preview">{r.message}</div>}
       <div className="row">
@@ -114,6 +118,28 @@ function BulkMode({ items, onExit, onDone }) {
 
 export default function DueList() {
   const { t } = useI18n();
+  const [params, setParams] = useSearchParams();
+  const view = params.get('view') === 'pipeline' ? 'pipeline' : 'reminders';
+  const viewSeg = (
+    <div className="seg">
+      <button type="button" className={view === 'reminders' ? 'on' : ''} onClick={() => setParams({})}>{t('reminders')}</button>
+      <button type="button" className={view === 'pipeline' ? 'on' : ''} onClick={() => setParams({ view: 'pipeline' })}>{t('pipeline')}</button>
+    </div>
+  );
+  if (view === 'pipeline') {
+    return (
+      <div className="stack">
+        <h2 style={{ fontSize: '1.2rem' }}>{t('dueList')}</h2>
+        {viewSeg}
+        <PipelineList />
+      </div>
+    );
+  }
+  return <Reminders viewSeg={viewSeg} />;
+}
+
+function Reminders({ viewSeg }) {
+  const { t } = useI18n();
   const { canWrite } = useAuth();
   const [tab, setTab] = useState('pending');
   const [bulk, setBulk] = useState(false);
@@ -135,9 +161,10 @@ export default function DueList() {
       <div className="row">
         <h2 className="spacer" style={{ fontSize: '1.2rem' }}>{t('dueList')}</h2>
       </div>
-      <div className="seg">
-        <button type="button" className={tab === 'pending' ? 'on' : ''} onClick={() => setTab('pending')}>{t('pending')}</button>
-        <button type="button" className={tab === 'sent' ? 'on' : ''} onClick={() => setTab('sent')}>{t('sent')}</button>
+      {viewSeg}
+      <div className="chips">
+        <button type="button" className={`chip ${tab === 'pending' ? 'on' : ''}`} onClick={() => setTab('pending')}>{t('pending')}</button>
+        <button type="button" className={`chip ${tab === 'sent' ? 'on' : ''}`} onClick={() => setTab('sent')}>{t('sent')}</button>
       </div>
       {tab === 'pending' && data?.length > 0 && canWrite && (
         <button type="button" className="btn primary lg block" onClick={() => setBulk(true)}>

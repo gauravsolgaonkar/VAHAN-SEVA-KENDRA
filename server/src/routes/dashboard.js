@@ -5,6 +5,7 @@ import Customer from '../models/Customer.js';
 import Document from '../models/Document.js';
 import RcCallLog from '../models/RcCallLog.js';
 import Reminder from '../models/Reminder.js';
+import RenewalCase from '../models/RenewalCase.js';
 import Tenant from '../models/Tenant.js';
 import Vehicle from '../models/Vehicle.js';
 import { addDays, daysUntil, istDayStart } from '../utils/dates.js';
@@ -27,13 +28,16 @@ r.get('/', asyncH(async (req, res) => {
   const monthStart = new Date(today);
   monthStart.setUTCDate(1);
 
-  const [docs, customers, vehicles, tenant, rcMonth, pendingReminders] = await Promise.all([
+  const [docs, customers, vehicles, tenant, rcMonth, pendingReminders, closedCases, booked, pucToday] = await Promise.all([
     Document.find({ ...s, status: 'active', expiryDate: { $ne: null } }).select('type expiryDate').lean(),
     Customer.countDocuments(s),
     Vehicle.countDocuments(s),
     Tenant.findById(req.tenantId).lean(),
     RcCallLog.countDocuments({ tenantId: req.tenantId, cached: false, success: true, createdAt: { $gte: monthStart } }),
     Reminder.countDocuments({ ...s, status: 'pending' }),
+    RenewalCase.find({ ...s, closedAt: { $gte: monthStart } }).select('status').lean(),
+    Document.find({ ...s, bookedAt: { $gte: monthStart }, type: { $in: ['insurance', 'health', 'life'] } }).select('commission insurance amount').lean(),
+    Document.find({ ...s, type: 'puc', source: 'puc_entry', bookedAt: { $gte: today } }).select('amount paymentMode').lean(),
   ]);
 
   const byType = {};
@@ -63,7 +67,21 @@ r.get('/', asyncH(async (req, res) => {
       documentId: d._id, type: d.type, expiryDate: d.expiryDate, daysLeft: daysUntil(d.expiryDate, now),
       customer: cMap[String(d.customerId)], vehicle: vMap[String(d.vehicleId)],
     })),
-    rc: { credits: tenant?.rcCredits ?? 0, fetchesThisMonth: rcMonth },
+    rc: {
+      credits: tenant?.rcCredits ?? 0, fetchesThisMonth: rcMonth,
+      low: (tenant?.rcCredits ?? 0) <= (tenant?.settings?.lowCreditThreshold ?? 10),
+    },
+    month: {
+      renewed: closedCases.filter((c) => c.status === 'renewed').length,
+      lost: closedCases.filter((c) => c.status === 'lost').length,
+      policies: booked.length,
+      premium: booked.reduce((sum, d) => sum + (d.insurance?.totalPremium ?? d.amount ?? 0), 0),
+      commission: booked.reduce((sum, d) => sum + (d.commission?.amount || 0), 0),
+    },
+    puc: tenant?.mode === 'puc_centre' || pucToday.length
+      ? { count: pucToday.length, total: pucToday.reduce((sum, d) => sum + (d.amount || 0), 0), cash: pucToday.filter((d) => d.paymentMode === 'cash').reduce((sum, d) => sum + (d.amount || 0), 0) }
+      : null,
+    mode: tenant?.mode,
   });
 }));
 

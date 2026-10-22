@@ -7,7 +7,7 @@ import { buildQueueForTenant } from '../jobs/reminders.js';
 import { isObjectId, scope } from '../middleware/auth.js';
 import { asyncH, HttpError } from '../middleware/errors.js';
 import Customer from '../models/Customer.js';
-import Document, { DOC_TYPES } from '../models/Document.js';
+import Document, { COMMISSION_TYPES, computeCommission, DOC_TYPES } from '../models/Document.js';
 import Reminder from '../models/Reminder.js';
 import Tenant from '../models/Tenant.js';
 import Vehicle from '../models/Vehicle.js';
@@ -15,7 +15,23 @@ import { insuranceEnd, pucEnd } from '../utils/dates.js';
 import { pick } from '../utils/pick.js';
 
 const r = Router();
-const FIELDS = ['type', 'number', 'provider', 'issueDate', 'startDate', 'expiryDate', 'amount', 'permitType', 'insurance', 'notes'];
+const FIELDS = ['type', 'number', 'provider', 'issueDate', 'startDate', 'expiryDate', 'amount', 'permitType', 'insurance', 'notes', 'commission', 'paymentMode'];
+
+/** Booked-through-us flag and commission amount, shared by create and update. */
+function applyBusiness(doc, body, user) {
+  if (body.bookedThroughUs === true && !doc.bookedAt) {
+    doc.bookedAt = doc.startDate || doc.issueDate || new Date();
+    doc.bookedBy = user._id;
+  } else if (body.bookedThroughUs === false) {
+    doc.bookedAt = undefined;
+    doc.bookedBy = undefined;
+  }
+  if (doc.commission?.type) {
+    if (!COMMISSION_TYPES.includes(doc.commission.type)) throw new HttpError(400, 'validation', 'commission.type');
+    doc.commission.amount = computeCommission(doc.commission, doc.insurance || {});
+    if (doc.commission.payoutReceived && !doc.commission.payoutDate) doc.commission.payoutDate = new Date();
+  }
+}
 
 fs.mkdirSync(config.uploadDir, { recursive: true });
 const upload = multer({
@@ -81,7 +97,9 @@ r.post('/', asyncH(async (req, res) => {
   if (vehicle && req.body.replaceCurrent !== false) {
     await Document.updateMany({ tenantId: req.tenantId, vehicleId: vehicle._id, type: data.type, status: 'active' }, { $set: { status: 'archived' } });
   }
-  const doc = await Document.create({ ...data, tenantId: req.tenantId, agentId: customer.agentId, customerId: customer._id, vehicleId: vehicle?._id });
+  const doc = new Document({ ...data, tenantId: req.tenantId, agentId: customer.agentId, customerId: customer._id, vehicleId: vehicle?._id });
+  applyBusiness(doc, req.body, req.user);
+  await doc.save();
   await Reminder.updateMany({ tenantId: req.tenantId, vehicleId: vehicle?._id, docType: data.type, status: 'pending', documentId: { $ne: doc._id } }, { $set: { status: 'skipped' } });
   await refreshQueue(req.tenantId);
   res.status(201).json(doc);
@@ -100,6 +118,7 @@ r.patch('/:id', asyncH(async (req, res) => {
   const expiryChanged = data.expiryDate && String(new Date(data.expiryDate)) !== String(doc.expiryDate);
   Object.assign(doc, data);
   if (req.body.status && ['active', 'archived'].includes(req.body.status)) doc.status = req.body.status;
+  applyBusiness(doc, req.body, req.user);
   await doc.save();
   if (expiryChanged || doc.status === 'archived') {
     await Reminder.updateMany({ documentId: doc._id, status: 'pending' }, { $set: { status: 'skipped' } });

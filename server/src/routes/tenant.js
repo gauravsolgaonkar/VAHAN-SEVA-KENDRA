@@ -16,6 +16,13 @@ r.patch('/', requireRole('owner'), asyncH(async (req, res) => {
   if (mode && ['agent', 'puc_centre'].includes(mode)) t.mode = mode;
   if (settings.defaultLanguage) t.settings.defaultLanguage = settings.defaultLanguage;
   if (typeof settings.renewalCheck === 'boolean') t.settings.renewalCheck = settings.renewalCheck;
+  if (Number.isInteger(settings.lowCreditThreshold) && settings.lowCreditThreshold >= 0) t.settings.lowCreditThreshold = settings.lowCreditThreshold;
+  if (settings.pucRates) {
+    for (const [k, v] of Object.entries(settings.pucRates)) {
+      if (!Number.isFinite(Number(v)) || Number(v) < 0) throw new HttpError(400, 'validation', 'pucRates');
+      t.settings.pucRates.set(k, Number(v));
+    }
+  }
   if (settings.reminderOffsets) {
     for (const [k, v] of Object.entries(settings.reminderOffsets)) {
       if (!Array.isArray(v) || !v.every((n) => Number.isInteger(n) && n >= -30 && n <= 90)) throw new HttpError(400, 'validation', 'reminderOffsets');
