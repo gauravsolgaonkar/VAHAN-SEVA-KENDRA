@@ -2,10 +2,15 @@ import mongoose from 'mongoose';
 import { createApp } from './app.js';
 import { config } from './config.js';
 import { buildAllQueues, startReminderCron } from './jobs/reminders.js';
+import User from './models/User.js';
 import { activeProviders } from './rc/index.js';
+import { OWNER_MOBILE, seedDemo } from './seedDemo.js';
 
 await mongoose.connect(config.mongoUri);
 console.log('[db] connected');
+
+// Live preview: create the demo tenant once if asked to.
+if (process.env.SEED_DEMO === '1' && !(await User.exists({ mobile: OWNER_MOBILE }))) await seedDemo();
 
 const app = createApp();
 app.listen(config.port, () => {

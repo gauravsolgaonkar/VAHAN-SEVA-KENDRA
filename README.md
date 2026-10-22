@@ -41,7 +41,7 @@ Not in Phase 1: credit wallet/Razorpay, bulk fetch, renewal check, pipeline, com
 cd server
 cp .env.example .env        # set MONGODB_URI (local mongod or Atlas)
 npm install
-npm run seed                # demo data: owner 9999999999 / demo123, staff 9888888888 / demo123
+npm run seed                # demo data: owner 9999999999 / demo123, staff 9888888888 / demo123 (or set SEED_DEMO=1 to seed once on boot)
 npm run dev                 # http://localhost:4000
 
 # App
