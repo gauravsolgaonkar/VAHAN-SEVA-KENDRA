@@ -2,6 +2,7 @@ import { config } from '../config.js';
 import ConsentLog from '../models/ConsentLog.js';
 import RcCallLog from '../models/RcCallLog.js';
 import RcRecord from '../models/RcRecord.js';
+import { addCredits, takeCredits } from '../wallet.js';
 import { RcProviderError } from './errors.js';
 import cashfree from './providers/cashfree.js';
 import mock from './providers/mock.js';
@@ -58,11 +59,12 @@ export async function fetchWithFallback(regNo, { providers = activeProviders(), 
 export const CONSENT_TEXT = 'Customer has consented to vehicle detail verification';
 
 /**
- * Full RC lookup for a tenant: consent log -> 30-day cache -> provider chain -> call log -> cache write.
+ * Full RC lookup for a tenant: consent log -> 30-day cache -> credit -> provider chain -> call log -> cache write.
+ * A live fetch costs 1 credit, refunded if every provider fails. Cache hits are free.
  * Returns { record, cached }.
  */
-export async function lookupRc({ tenantId, user, regNo, refresh = false, ip, userAgent }) {
-  const consent = await ConsentLog.create({ tenantId, userId: user._id, regNo, text: CONSENT_TEXT, ip, userAgent });
+export async function lookupRc({ tenantId, user, regNo, refresh = false, ip, userAgent, consentText = CONSENT_TEXT }) {
+  const consent = await ConsentLog.create({ tenantId, userId: user._id, regNo, text: consentText, ip, userAgent });
 
   const existing = await RcRecord.findOne({ tenantId, regNo });
   const fresh = existing && Date.now() - existing.fetchedAt.getTime() < config.rcCacheDays * 86400000;
@@ -71,14 +73,24 @@ export async function lookupRc({ tenantId, user, regNo, refresh = false, ip, use
     return { record: existing, cached: true };
   }
 
-  const result = await fetchWithFallback(regNo, {
-    onAttempt: ({ provider, success, durationMs, error }) =>
-      RcCallLog.create({
-        tenantId, userId: user._id, regNo, provider: provider.name, cached: false, success,
-        cost: success ? provider.costPerCall : 0, durationMs, error: error ? `${error.code}: ${error.message}` : undefined,
-        consentLogId: consent._id, ip,
-      }),
-  });
+  if ((await takeCredits(tenantId, 1, { userId: user._id, regNo })) === null) {
+    throw new RcProviderError('no_credits', 'RC credit balance is 0');
+  }
+
+  let result;
+  try {
+    result = await fetchWithFallback(regNo, {
+      onAttempt: ({ provider, success, durationMs, error }) =>
+        RcCallLog.create({
+          tenantId, userId: user._id, regNo, provider: provider.name, cached: false, success,
+          cost: success ? provider.costPerCall : 0, durationMs, error: error ? `${error.code}: ${error.message}` : undefined,
+          consentLogId: consent._id, ip,
+        }),
+    });
+  } catch (err) {
+    await addCredits(tenantId, 1, { userId: user._id, regNo, type: 'refund', note: err.code });
+    throw err;
+  }
 
   const record = await RcRecord.findOneAndUpdate(
     { tenantId, regNo },

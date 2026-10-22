@@ -9,7 +9,7 @@ import Tenant from '../models/Tenant.js';
 import Vehicle, { VEHICLE_TYPES } from '../models/Vehicle.js';
 import { buildQueueForTenant } from '../jobs/reminders.js';
 import { lookupRc } from '../rc/index.js';
-import { RcProviderError } from '../rc/errors.js';
+import { rcErrorStatus, RcProviderError } from '../rc/errors.js';
 import { syncDocsFromRc } from '../utils/docsFromRc.js';
 import { escapeRegex, pick } from '../utils/pick.js';
 import { normalizeRegNo } from '../utils/regno.js';
@@ -130,7 +130,7 @@ r.post('/:id/refresh-rc', asyncH(async (req, res) => {
   try {
     result = await lookupRc({ tenantId: req.tenantId, user: req.user, regNo: v.regNo, refresh: true, ip: req.ip, userAgent: req.get('user-agent') });
   } catch (e) {
-    if (e instanceof RcProviderError) throw new HttpError(e.code === 'not_found' ? 404 : 502, `rc_${e.code}`, e.message);
+    if (e instanceof RcProviderError) throw new HttpError(rcErrorStatus(e), `rc_${e.code}`, e.message);
     throw e;
   }
   const n = result.record.normalized;

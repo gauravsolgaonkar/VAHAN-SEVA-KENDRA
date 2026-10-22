@@ -4,6 +4,8 @@ import Document from '../models/Document.js';
 import Reminder from '../models/Reminder.js';
 import Tenant, { DEFAULT_REMINDER_OFFSETS } from '../models/Tenant.js';
 import { addDays, daysUntil, istDayStart } from '../utils/dates.js';
+import { ensureCase } from '../utils/renewal.js';
+import { runAllRenewalChecks } from './renewalCheck.js';
 
 // Expired documents older than this stop generating reminders.
 const MAX_DAYS_PAST = 30;
@@ -35,12 +37,13 @@ export async function buildQueueForTenant(tenant, now = new Date()) {
     tenantId: tenant._id,
     status: 'active',
     expiryDate: { $gte: addDays(today, -MAX_DAYS_PAST), $lte: addDays(today, maxAhead + 1) },
-  }).select('_id agentId customerId vehicleId type expiryDate');
+  }).select('_id tenantId agentId customerId vehicleId type expiryDate');
 
   let created = 0;
   for (const doc of docs) {
     const step = currentStep(offsetsFor(tenant, doc.type), daysUntil(doc.expiryDate, now));
     if (step === null) continue;
+    await ensureCase(doc);
     const key = { documentId: doc._id, offsetDays: step, expiryDate: doc.expiryDate };
     const exists = await Reminder.findOne(key).select('_id');
     if (exists) continue;
@@ -71,7 +74,14 @@ export function startReminderCron() {
   if (config.disableCron) return;
   cron.schedule(
     config.reminderCron,
-    () => buildAllQueues().then((n) => console.log(`[reminders] queued ${n}`)).catch((e) => console.error('[reminders]', e)),
+    async () => {
+      try {
+        console.log(`[reminders] queued ${await buildAllQueues()}`);
+        await runAllRenewalChecks();
+      } catch (e) {
+        console.error('[reminders]', e);
+      }
+    },
     { timezone: 'Asia/Kolkata' },
   );
 }

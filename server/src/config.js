@@ -17,6 +17,14 @@ export const config = {
   rcDailyLimitPerUser: Number(env.RC_DAILY_LIMIT_PER_USER || 200),
   surepass: { baseUrl: env.SUREPASS_BASE_URL || 'https://kyc-api.surepass.io', token: env.SUREPASS_TOKEN || '' },
   cashfree: { baseUrl: env.CASHFREE_BASE_URL || 'https://api.cashfree.com', clientId: env.CASHFREE_CLIENT_ID || '', clientSecret: env.CASHFREE_CLIENT_SECRET || '' },
+  razorpay: {
+    keyId: env.RAZORPAY_KEY_ID || '',
+    keySecret: env.RAZORPAY_KEY_SECRET || '',
+    webhookSecret: env.RAZORPAY_WEBHOOK_SECRET || '',
+  },
+  // Without Razorpay keys, allow simulated payments so the purchase flow can be tried (never in real use).
+  paymentsMock: env.PAYMENTS_MOCK === '1',
+  bulkDelayMs: Number(env.BULK_DELAY_MS || 400),
   reminderCron: env.REMINDER_CRON || '0 8 * * *',
   disableCron: env.DISABLE_CRON === '1',
 };

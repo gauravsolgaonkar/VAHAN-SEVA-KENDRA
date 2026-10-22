@@ -8,7 +8,10 @@ import RcCallLog from '../models/RcCallLog.js';
 import RcRecord from '../models/RcRecord.js';
 import Vehicle from '../models/Vehicle.js';
 import { lookupRc } from '../rc/index.js';
-import { RcProviderError } from '../rc/errors.js';
+import BulkJob from '../models/BulkJob.js';
+import Customer from '../models/Customer.js';
+import { estimateBulk, runBulkJob } from '../jobs/bulk.js';
+import { rcErrorStatus, RcProviderError } from '../rc/errors.js';
 import { istDayStart } from '../utils/dates.js';
 import { normalizeRegNo } from '../utils/regno.js';
 
@@ -51,8 +54,7 @@ r.post('/lookup', perUserLimiter, asyncH(async (req, res) => {
     });
   } catch (e) {
     if (e instanceof RcProviderError) {
-      const status = e.code === 'not_found' ? 404 : e.code === 'config' ? 503 : 502;
-      throw new HttpError(status, `rc_${e.code}`, e.message);
+      throw new HttpError(rcErrorStatus(e), `rc_${e.code}`, e.message);
     }
     throw e;
   }
@@ -86,6 +88,54 @@ r.get('/logs', requireRole('owner'), asyncH(async (req, res) => {
 r.get('/consents', requireRole('owner'), asyncH(async (req, res) => {
   const logs = await ConsentLog.find({ tenantId: req.tenantId }).sort({ createdAt: -1 }).limit(200).populate('userId', 'name').lean();
   res.json(logs);
+}));
+
+// ---- Bulk fetch ----
+const MAX_BULK = 500;
+const listOf = (body) => (Array.isArray(body.regNos) ? body.regNos : String(body.text || '').split(/[\r\n,;\t]+/)).slice(0, MAX_BULK * 2);
+
+r.post('/bulk/estimate', asyncH(async (req, res) => {
+  res.json(await estimateBulk(req.tenantId, listOf(req.body)));
+}));
+
+r.post('/bulk', asyncH(async (req, res) => {
+  if (req.body.consent !== true) throw new HttpError(400, 'consent_required');
+  const est = await estimateBulk(req.tenantId, listOf(req.body));
+  const existing = new Set(est.existing);
+  const regNos = est.valid.filter((x) => req.body.includeExisting || !existing.has(x));
+  if (!regNos.length) throw new HttpError(400, 'nothing_to_fetch');
+  if (regNos.length > MAX_BULK) throw new HttpError(400, 'too_many', MAX_BULK);
+  let customerId;
+  if (req.body.customerId) {
+    const c = await Customer.findOne({ ...scope(req), _id: req.body.customerId });
+    if (!c) throw new HttpError(404, 'customer_not_found');
+    customerId = c._id;
+  }
+  const job = await BulkJob.create({
+    tenantId: req.tenantId, userId: req.user._id, source: req.body.source === 'import' ? 'import' : 'bulk', customerId,
+    items: regNos.map((regNo) => ({ regNo })),
+  });
+  runBulkJob(job._id).catch((e) => console.error('[bulk]', e));
+  res.status(201).json(job);
+}));
+
+r.get('/bulk', asyncH(async (req, res) => {
+  const filter = { tenantId: req.tenantId };
+  if (req.user.role === 'staff' && !req.user.canViewAll) filter.userId = req.user._id;
+  res.json(await BulkJob.find(filter).sort({ createdAt: -1 }).limit(20).select('-items.ownerName').lean());
+}));
+
+r.get('/bulk/:id', asyncH(async (req, res) => {
+  if (!isObjectId(req.params.id)) throw new HttpError(404, 'not_found');
+  const job = await BulkJob.findOne({ _id: req.params.id, tenantId: req.tenantId }).lean();
+  if (!job) throw new HttpError(404, 'not_found');
+  res.json(job);
+}));
+
+r.post('/bulk/:id/stop', asyncH(async (req, res) => {
+  if (!isObjectId(req.params.id)) throw new HttpError(404, 'not_found');
+  await BulkJob.updateOne({ _id: req.params.id, tenantId: req.tenantId, status: 'running' }, { $set: { status: 'stopped' } });
+  res.json({ ok: true });
 }));
 
 export default r;

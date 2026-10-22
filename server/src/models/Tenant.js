@@ -16,6 +16,9 @@ const tenantSchema = new mongoose.Schema(
       // Days before expiry (negative = after) per document type; "default" applies to the rest.
       reminderOffsets: { type: Map, of: [Number], default: () => ({ default: REMINDER_DEFAULT }) },
       renewalCheck: { type: Boolean, default: false },
+      lowCreditThreshold: { type: Number, default: 10 },
+      // PUC centre: default walk-in charge (₹) per vehicle type.
+      pucRates: { type: Map, of: Number, default: () => ({ '2W': 50, car: 100, auto: 80, pickup: 120, default: 150 }) },
     },
   },
   { timestamps: true },
