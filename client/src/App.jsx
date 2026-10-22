@@ -20,6 +20,12 @@ const DocumentForm = lazy(() => import('./pages/DocumentForm.jsx'));
 const Reports = lazy(() => import('./pages/Reports.jsx'));
 const Settings = lazy(() => import('./pages/Settings.jsx'));
 const Search = lazy(() => import('./pages/Search.jsx'));
+const Wallet = lazy(() => import('./pages/Wallet.jsx'));
+const BulkFetch = lazy(() => import('./pages/BulkFetch.jsx'));
+const Pipeline = lazy(() => import('./pages/Pipeline.jsx'));
+const PipelineCase = lazy(() => import('./pages/PipelineCase.jsx'));
+const Import = lazy(() => import('./pages/Import.jsx'));
+const PucEntry = lazy(() => import('./pages/PucEntry.jsx'));
 
 function LangSwitch() {
   const { lang, setLang } = useI18n();
@@ -108,6 +114,12 @@ export default function App() {
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/search" element={<Search />} />
+            <Route path="/wallet" element={<Wallet />} />
+            <Route path="/bulk" element={<BulkFetch />} />
+            <Route path="/pipeline" element={<Pipeline />} />
+            <Route path="/pipeline/:id" element={<PipelineCase />} />
+            <Route path="/import" element={<Import />} />
+            <Route path="/puc" element={<PucEntry />} />
             <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

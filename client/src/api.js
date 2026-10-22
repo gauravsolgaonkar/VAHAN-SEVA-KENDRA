@@ -54,3 +54,22 @@ export async function openFile(path) {
   const url = URL.createObjectURL(await res.blob());
   window.open(url, '_blank');
 }
+
+/** Download an authenticated file (Excel exports) with its name. */
+export async function downloadFile(path, filename) {
+  let res;
+  try {
+    res = await fetch(BASE + path, { headers: { Authorization: `Bearer ${token}` } });
+  } catch {
+    throw new ApiError(0, 'offline');
+  }
+  if (!res.ok) throw new ApiError(res.status, 'generic');
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}

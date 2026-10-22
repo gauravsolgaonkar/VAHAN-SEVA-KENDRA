@@ -76,6 +76,7 @@ r.post('/', asyncH(async (req, res) => {
 
 r.get('/:id', asyncH(async (req, res) => {
   const rc = await findCase(req, req.params.id);
+  await rc.populate([{ path: 'notes.by', select: 'name' }, { path: 'history.by', select: 'name' }]);
   const [out] = await hydrate(req.tenantId, [rc.toObject()]);
   res.json(out);
 }));

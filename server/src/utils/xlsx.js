@@ -27,7 +27,8 @@ export async function readTable(buffer, filename = '') {
   let ws;
   if (/\.csv$/i.test(filename)) {
     const { Readable } = await import('node:stream');
-    ws = await wb.csv.read(Readable.from(buffer), { parserOptions: { delimiter: sniffDelimiter(buffer) } });
+    // Keep cells as text: exceljs would read 05-11-2026 as a US date (11 May), Indian sheets mean 5 Nov.
+    ws = await wb.csv.read(Readable.from(buffer), { map: (v) => v, parserOptions: { delimiter: sniffDelimiter(buffer) } });
   } else {
     await wb.xlsx.load(buffer);
     ws = wb.worksheets[0];

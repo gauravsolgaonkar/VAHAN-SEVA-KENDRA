@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import * as phase2 from './i18n2.js';
 
 const en = {
   appName: 'Vahan Seva Kendra', name: 'Name',
@@ -207,7 +208,7 @@ const mr = {
   error_read_only: 'तुमचे खाते फक्त पाहण्यासाठी आहे',
 };
 
-export const DICTS = { en, hi, mr };
+export const DICTS = { en: { ...en, ...phase2.en }, hi: { ...hi, ...phase2.hi }, mr: { ...mr, ...phase2.mr } };
 export const LANGS = [
   { code: 'mr', label: 'मराठी' },
   { code: 'hi', label: 'हिंदी' },
@@ -238,8 +239,8 @@ export function I18nProvider({ children }) {
     }
   }, []);
   const t = useCallback((key, vars) => {
-    let s = DICTS[lang]?.[key] ?? en[key] ?? key;
-    if (vars) for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, v);
+    let s = DICTS[lang]?.[key] ?? DICTS.en[key] ?? key;
+    if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, v);
     return s;
   }, [lang]);
   const value = useMemo(() => ({ lang, setLang, t }), [lang, setLang, t]);

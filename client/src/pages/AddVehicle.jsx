@@ -143,6 +143,7 @@ export default function AddVehicle() {
 
   const fetchErrText = fetchErr && (
     fetchErr.code === 'consent' ? t('consentNeeded')
+      : fetchErr.code === 'rc_no_credits' ? t('error_rc_no_credits')
       : fetchErr.code === 'rc_not_found' ? t('rcNotFound')
         : fetchErr.code === 'rate_limited' ? t('error_rate_limited')
           : fetchErr.code?.startsWith('rc_') || fetchErr.code === 'offline' ? t('rcFailed') : errorText(t, fetchErr)
@@ -164,7 +165,12 @@ export default function AddVehicle() {
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
             <span className="small bold">{t('consent')}</span>
           </label>
-          {fetchErr && <div className={`banner ${fetchErr.code === 'consent' ? 'warn' : 'err'}`}>{fetchErrText}</div>}
+          {fetchErr && (
+            <div className={`banner ${fetchErr.code === 'consent' ? 'warn' : 'err'} row`}>
+              <span className="spacer">{fetchErrText}</span>
+              {fetchErr.code === 'rc_no_credits' && <Link className="btn sm primary" to="/wallet">{t('buyCredits')}</Link>}
+            </div>
+          )}
           <button type="button" className="btn primary lg block" onClick={fetchRc} disabled={phase === 'fetching' || !reg}>
             {phase === 'fetching' ? <><span className="spinner" /> {t('fetching')}</> : <><Icon name="search" /> {t('fetchDetails')}</>}
           </button>

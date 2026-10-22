@@ -119,7 +119,14 @@ export default function VehicleDetail() {
               <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
               <span className="small bold">{t('consent')}</span>
             </label>
-            {refreshErr && <div className={`banner ${refreshErr.code === 'consent' ? 'warn' : 'err'}`}>{refreshErr.code === 'consent' ? t('consentNeeded') : refreshErr.code?.startsWith('rc_') ? t('rcFailed') : errorText(t, refreshErr)}</div>}
+            {refreshErr && (
+              <div className={`banner ${refreshErr.code === 'consent' ? 'warn' : 'err'} row`}>
+                <span className="spacer">
+                  {refreshErr.code === 'consent' ? t('consentNeeded') : refreshErr.code === 'rc_no_credits' ? t('error_rc_no_credits') : refreshErr.code?.startsWith('rc_') ? t('rcFailed') : errorText(t, refreshErr)}
+                </span>
+                {refreshErr.code === 'rc_no_credits' && <Link className="btn sm primary" to="/wallet">{t('buyCredits')}</Link>}
+              </div>
+            )}
             <button type="button" className="btn blue block" onClick={refresh} disabled={refreshing}>
               {refreshing ? <><span className="spinner" /> {t('fetching')}</> : <><Icon name="refresh" /> {t('refresh')}</>}
             </button>

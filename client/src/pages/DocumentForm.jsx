@@ -2,12 +2,16 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, openFile } from '../api.js';
 import { useAuth } from '../auth.jsx';
+import CommissionFields from '../components/CommissionFields.jsx';
 import Icon from '../components/Icon.jsx';
 import { errorText, ExpiryPill, Field, Loading, PageHeader } from '../components/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { insuranceEnd, PERSONAL_DOC_TYPES, pucEnd, toInputDate, VEHICLE_DOC_TYPES } from '../util.js';
 
-const empty = { type: 'insurance', number: '', provider: '', issueDate: '', startDate: '', expiryDate: '', amount: '', permitType: '', notes: '', insurance: { policyType: null } };
+const empty = {
+  type: 'insurance', number: '', provider: '', issueDate: '', startDate: '', expiryDate: '', amount: '', permitType: '', notes: '',
+  insurance: { policyType: null }, commission: { type: null }, paymentMode: null, bookedThroughUs: false,
+};
 const INS_TYPES = new Set(['insurance', 'health', 'life']);
 
 export default function DocumentForm() {
@@ -32,6 +36,7 @@ export default function DocumentForm() {
         ...empty, ...doc,
         issueDate: toInputDate(doc.issueDate), startDate: toInputDate(doc.startDate), expiryDate: toInputDate(doc.expiryDate),
         amount: doc.amount ?? '', insurance: doc.insurance || { policyType: null },
+        commission: doc.commission || { type: null }, bookedThroughUs: Boolean(doc.bookedAt),
       });
     }).catch(setErr);
   }, [id]);
@@ -75,6 +80,11 @@ export default function DocumentForm() {
         policyType: d.insurance.policyType || null, idv: num(d.insurance.idv), ncb: num(d.insurance.ncb),
         totalPremium: num(d.insurance.totalPremium), odPremium: num(d.insurance.odPremium), tpPremium: num(d.insurance.tpPremium),
       } : undefined,
+      bookedThroughUs: INS_TYPES.has(d.type) || d.type === 'puc' ? d.bookedThroughUs : undefined,
+      commission: INS_TYPES.has(d.type) && d.bookedThroughUs && d.commission?.type
+        ? { type: d.commission.type, rate: num(d.commission.rate), platform: d.commission.platform || undefined, payoutReceived: Boolean(d.commission.payoutReceived) }
+        : undefined,
+      paymentMode: d.paymentMode || undefined,
     };
     try {
       const saved = id
@@ -89,6 +99,15 @@ export default function DocumentForm() {
     } catch (ex) {
       setErr(ex);
       setBusy(false);
+    }
+  }
+
+  async function openCase() {
+    try {
+      const c = await api('/pipeline', { method: 'POST', body: { documentId: id } });
+      nav(`/pipeline/${c._id}`);
+    } catch (ex) {
+      setErr(ex);
     }
   }
 
@@ -149,6 +168,24 @@ export default function DocumentForm() {
           )}
           <Field label={t('notes')}><textarea className="input" value={d.notes || ''} onChange={set('notes')} rows={2} /></Field>
         </div>
+        {(INS_TYPES.has(d.type) || d.type === 'puc') && (
+          <div className="card stack">
+            <label className={`check ${d.bookedThroughUs ? 'on' : ''}`}>
+              <input type="checkbox" checked={d.bookedThroughUs} onChange={(e) => setD({ ...d, bookedThroughUs: e.target.checked })} />
+              <span className="small bold">{t('bookedThroughUs')}</span>
+            </label>
+            {d.bookedThroughUs && INS_TYPES.has(d.type) && (
+              <CommissionFields value={d.commission || {}} insurance={d.insurance} onChange={(commission) => setD({ ...d, commission })} />
+            )}
+            {d.bookedThroughUs && (
+              <Field label={t('paymentMode')}>
+                <div className="seg">
+                  {['cash', 'upi', 'card', 'other'].map((m) => <button type="button" key={m} className={d.paymentMode === m ? 'on' : ''} onClick={() => setD({ ...d, paymentMode: m })}>{t(`pm_${m}`)}</button>)}
+                </div>
+              </Field>
+            )}
+          </div>
+        )}
         <div className="card stack">
           <Field label={t('uploadFile')}>
             <input className="input" type="file" accept="image/*,application/pdf" capture="environment" onChange={(e) => setFile(e.target.files?.[0] || null)} />
@@ -166,6 +203,9 @@ export default function DocumentForm() {
         {err && <div className="banner err">{errorText(t, err)}</div>}
         {canWrite && <button className="btn primary lg block" disabled={busy}>{busy ? <span className="spinner" /> : t('save')}</button>}
       </fieldset>
+      {id && d.status === 'active' && canWrite && (
+        <button type="button" className="btn blue block" onClick={openCase}><Icon name="funnel" /> {t('openCase')}</button>
+      )}
       {id && isOwner && <button type="button" className="btn danger block" onClick={remove}>{t('delete')}</button>}
     </form>
   );
